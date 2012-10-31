@@ -16,10 +16,6 @@ class MessageLoop;
 namespace mozilla {
 namespace ipc {
 
-
-// TODO allstars
-// Add another class RilProxyData tp encapsulate RilRawData
-
 /*
  * Represents raw data going to or coming from the RIL socket. Can
  * actually contain multiple RIL parcels in the data block, and may
@@ -35,11 +31,68 @@ struct RilRawData
     size_t mSize;
 };
 
+class RilSubscriptionData : RilRawData
+{
+public:
+    int getSubId() {
+        return mSubId;
+    }
+
+    int getDataSize() {
+        return mDataSize;
+    }
+
+    RilRawData* getRilRawData() {
+
+    }
+
+    static const size_t SUB_ID_SIZE = 4;
+    static const size_t DATA_SIZE = 4;
+
+    uint8_t *mData;
+    int mDataSize;
+    int mSubId;
+};
+
+class RilProxyData
+{
+public:
+    RilProxyData()
+        : index(0)
+    { }
+
+    RilSubscriptionData* getNextRilSubscriptionData() {
+      if (index < mSize) {
+        nsAutoPtr<RilSubscriptionData> subData(new RilSubscriptionData);
+        subData->mSubId = mData[offset + 0] << 24 |
+                          mData[offset + 1] << 16 |
+                          mData[offset + 2] << 8  |
+                          mData[offset + 3];
+        subData->mDataSize = mData[offset + 4] << 24 |
+                             mData[offset + 5] << 16 |
+                             mData[offset + 6] << 8  |
+                             mData[offset + 7];
+        subData->mData = &mData[offset];
+        offset += subData::SUB_ID_SIZE + subData::DATA_SIZE + subData->getDataSize();
+        return subData.forget();
+      }
+    }
+
+    //TODO * NUM_RILD ?
+    static const size_t MAX_DATA_SIZE = 1032;
+    uint8_t mData[MAX_DATA_SIZE];
+    // Number of octets in mData.
+    size_t mSize;
+private:
+    int offset;
+};
+
 class RilConsumer : public RefCounted<RilConsumer>
 {
 public:
     virtual ~RilConsumer() { }
     virtual void MessageReceived(RilRawData* aMessage) { }
+    virtual void MessageReceived(RilProxyData* aMessage) { }
 };
 
 bool StartRil(RilConsumer* aConsumer);
