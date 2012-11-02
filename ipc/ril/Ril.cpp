@@ -48,13 +48,13 @@ struct RilClient : public RefCounted<RilClient>,
                    public MessageLoopForIO::Watcher
 
 {
-    typedef queue<RilRawData*> RilRawDataQueue;
+    typedef queue<RilProxyData*> RilProxyDataQueue;
 
     RilClient() : mSocket(-1)
                 , mMutex("RilClient.mMutex")
                 , mBlockedOnWrite(false)
                 , mIOLoop(MessageLoopForIO::current())
-                , mCurrentRilRawData(NULL)
+                , mCurrentRilProxyData(NULL)
     { }
     virtual ~RilClient() { }
 
@@ -68,10 +68,10 @@ struct RilClient : public RefCounted<RilClient>,
     MessageLoopForIO::FileDescriptorWatcher mWriteWatcher;
     nsAutoPtr<RilProxyData> mIncoming;
     Mutex mMutex;
-    RilRawDataQueue mOutgoingQ;
+    RilProxyDataQueue mOutgoingQ;
     bool mBlockedOnWrite;
     MessageLoopForIO* mIOLoop;
-    nsAutoPtr<RilRawData> mCurrentRilRawData;
+    nsAutoPtr<RilProxyData> mCurrentRilProxyData;
     size_t mCurrentWriteOffset;
 };
 
@@ -278,7 +278,7 @@ RilClient::OnFileCanReadWithoutBlocking(int fd)
                 RilReconnectTask::Enqueue();
                 return;
             }
-            mIncoming->mSize = ret;
+            mIncoming->mDataSize = ret;
             sConsumer->MessageReceived(mIncoming.forget());
             if (ret < ssize_t(RilProxyData::MAX_DATA_SIZE)) {
                 return;
@@ -290,10 +290,11 @@ RilClient::OnFileCanReadWithoutBlocking(int fd)
 void
 RilClient::OnFileCanWriteWithoutBlocking(int fd)
 {
-    // Try to write the bytes of mCurrentRilRawData.  If all were written, continue.
+    LOG("%s enter fd=%d", __func__, fd);
+    // Try to write the bytes of mCurrentRilProxyData.  If all were written, continue.
     //
     // Otherwise, save the byte position of the next byte to write
-    // within mCurrentRilRawData, and request another write when the
+    // within mCurrentRilProxyData, and request another write when the
     // system won't block.
     //
 
@@ -303,25 +304,31 @@ RilClient::OnFileCanWriteWithoutBlocking(int fd)
         {
             MutexAutoLock lock(mMutex);
 
-            if (mOutgoingQ.empty() && !mCurrentRilRawData) {
+            if (mOutgoingQ.empty() && !mCurrentRilProxyData) {
                 return;
             }
 
-            if(!mCurrentRilRawData) {
-                mCurrentRilRawData = mOutgoingQ.front();
+            if(!mCurrentRilProxyData) {
+                mCurrentRilProxyData = mOutgoingQ.front();
                 mOutgoingQ.pop();
                 mCurrentWriteOffset = 0;
             }
         }
         const uint8_t *toWrite;
 
-        toWrite = mCurrentRilRawData->mData;
- 
-        while (mCurrentWriteOffset < mCurrentRilRawData->mSize) {
-            ssize_t write_amount = mCurrentRilRawData->mSize - mCurrentWriteOffset;
+        LOG("dataSize=%d", mCurrentRilProxyData->mDataSize);
+        toWrite = mCurrentRilProxyData->mData;
+        LOG("%s enter 4 toWrite=%p", __func__, toWrite);
+        while (mCurrentWriteOffset < mCurrentRilProxyData->mDataSize) {
+            LOG("current write offset = %d",mCurrentWriteOffset);
+            ssize_t write_amount = mCurrentRilProxyData->mDataSize - mCurrentWriteOffset;
             ssize_t written;
+            for (int i = 0; i < write_amount; i++) {
+              LOG("i = %d toWrite = %d", i, toWrite[i]);
+            }
             written = write (fd, toWrite + mCurrentWriteOffset,
                              write_amount);
+            LOG("written = %d",written);
             if(written > 0) {
                 mCurrentWriteOffset += written;
             }
@@ -330,7 +337,7 @@ RilClient::OnFileCanWriteWithoutBlocking(int fd)
             }
         }
 
-        if(mCurrentWriteOffset != mCurrentRilRawData->mSize) {
+        if(mCurrentWriteOffset != mCurrentRilProxyData->mDataSize) {
             MessageLoopForIO::current()->WatchFileDescriptor(
                 fd,
                 false,
@@ -339,10 +346,10 @@ RilClient::OnFileCanWriteWithoutBlocking(int fd)
                 this);
             return;
         }
-        mCurrentRilRawData = NULL;
+        mCurrentRilProxyData = NULL;
     }
+    LOG("%s exit", __func__);
 }
-
 
 static void
 DisconnectFromRil(Monitor* aMonitor)
@@ -359,6 +366,45 @@ DisconnectFromRil(Monitor* aMonitor)
     }
 }
 
+RildData *
+RilProxyData::GetNextRildData()
+{
+    if (offset >= mDataSize) {
+        return NULL;
+    }
+    nsAutoPtr<RildData> data(new RildData);
+    uint8_t *ptr = &mData[offset];
+    data->mSubId = ptr[0] << 24 | ptr[1] << 16 | ptr[2] << 8 | ptr[3];
+    data->mDataSize = ptr[4] << 24 | ptr[5] << 16 | ptr[6] << 8 | ptr[7];
+    data->mData = new RilRawData();
+    memcpy(data->mData->mData,
+           &mData[offset + RildData::HEADER_SIZE],
+           data->mDataSize);
+    offset += RildData::HEADER_SIZE + data->getDataSize();
+    return data.forget();
+}
+
+void
+RilProxyData::appendRildData(RildData* aData)
+{
+    nsAutoPtr<RildData> data(aData);
+//    nsAutoPtr<RildData> data = aData;
+    LOG("%s offset=%d subId=%d dataSize=%d", __func__, offset, data->mSubId, data->mDataSize);
+    uint8_t *ptr = &mData[offset];
+    int subId = data->mSubId, dataSize = data->mDataSize;
+    ptr[0] = (subId >> 24) & 0xff;
+    ptr[1] = (subId >> 16) & 0xff;
+    ptr[2] = (subId >> 8) & 0xff;
+    ptr[3] = subId & 0xff;
+    ptr[4] = (dataSize >> 24) & 0xff;
+    ptr[5] = (dataSize >> 16) & 0xff;
+    ptr[6] = (dataSize >> 8) & 0xff;
+    ptr[7] = dataSize & 0xff;
+    offset += RildData::HEADER_SIZE;
+    memcpy(&mData[offset], data->mData->mData, dataSize);
+    offset += dataSize;
+    LOG("%s exit", __func__);
+}
 //-----------------------------------------------------------------------------
 // This code runs on any thread.
 //
@@ -385,13 +431,15 @@ StartRil(RilConsumer* aConsumer)
 }
 
 bool
-SendRilRawData(RilRawData** aMessage)
+SendRilProxyData(RilProxyData** aMessage)
 {
+    LOG("%s enter data=%p", __func__, *aMessage);
     if (!sClient) {
         return false;
     }
 
-    RilRawData *msg = *aMessage;
+    RilProxyData *msg = *aMessage;
+    LOG("dataSize=%u",msg->mDataSize);
     *aMessage = nullptr;
 
     {
@@ -400,6 +448,7 @@ SendRilRawData(RilRawData** aMessage)
     }
     sClient->mIOLoop->PostTask(FROM_HERE, new RilWriteTask());
 
+    LOG("%s exit", __func__);
     return true;
 }
 

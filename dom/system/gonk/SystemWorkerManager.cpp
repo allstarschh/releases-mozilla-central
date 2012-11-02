@@ -97,7 +97,7 @@ PostToRIL(JSContext *cx, unsigned argc, jsval *vp)
 
   jsval v = JS_ARGV(cx, vp)[0];
 
-  nsAutoPtr<RilRawData> rm(new RilRawData());
+  nsAutoPtr<RilRawData> raw(new RilRawData());
   JSAutoByteString abs;
   void *data;
   size_t size;
@@ -145,17 +145,19 @@ PostToRIL(JSContext *cx, unsigned argc, jsval *vp)
   };
   int subId = subVal.toInt32();
 
-  LOGD("XXX  subId=%d", subId);
-  //TODO See Ril.h, use RilProxyData
-  rm->mSize = size + SUB_ID_SIZE;
-  rm->mData[0] = (subId >> 24) & 0xff;
-  rm->mData[1] = (subId >> 16) & 0xff;
-  rm->mData[2] = (subId >> 8) & 0xff;
-  rm->mData[3] = subId & 0xff;
-  memcpy(&rm->mData[SUB_ID_SIZE], data, size);
+  memcpy(&raw->mData, data, size);
 
-  RilRawData *tosend = rm.forget();
-  JS_ALWAYS_TRUE(SendRilRawData(&tosend));
+  nsAutoPtr<RildData> rildData(new RildData());
+  rildData->mSubId = subId;
+  rildData->mDataSize = size;
+  rildData->mData = raw;
+
+  nsAutoPtr<RilProxyData> proxyData(new RilProxyData());
+  proxyData->mDataSize = rildData->mDataSize;
+  proxyData->appendRildData(rildData.forget());
+
+  RilProxyData *tosend = proxyData.forget();
+  JS_ALWAYS_TRUE(SendRilProxyData(&tosend));
   return true;
 }
 
@@ -180,14 +182,14 @@ class RILReceiver : public RilConsumer
   class DispatchRILEvent : public WorkerTask
   {
   public:
-    DispatchRILEvent(RilRawData *aMessage)
+    DispatchRILEvent(RildData *aMessage)
       : mMessage(aMessage)
     { }
 
     virtual bool RunTask(JSContext *aCx);
 
   private:
-    nsAutoPtr<RilRawData> mMessage;
+    nsAutoPtr<RildData> mMessage;
   };
 
 public:
@@ -210,15 +212,13 @@ void
 RILReceiver::MessageReceived(RilProxyData *aMessage)
 {
   mMessage = aMessage;
-  LOGD("mMessage->mSize=%d",mMessage->mSize);
-  while (RilSubscriptionData *subData = mMessage->getNextRilSubscriptionData()) {
-    LOGD("XXX got RilSubsciptionData offset=%d",mMessage->offset);
+  while (RildData *data = mMessage->GetNextRildData()) {
+    LOGD("XXX got RildData RilProxyData");
     unsigned int subId, dataSize;
-    subId = subData->getSubId();
-    dataSize = subData->getDataSize();
+    subId = data->getSubId();
+    dataSize = data->getDataSize();
     LOGD("XXX subId=%d, dataSize=%d", subId, dataSize);
-    RilRawData *raw = subData->getRilRawData();
-    nsRefPtr<DispatchRILEvent> dre(new DispatchRILEvent(raw));
+    nsRefPtr<DispatchRILEvent> dre(new DispatchRILEvent(data));
     mDispatchers[subId]->PostTask(dre);
   }
 }
@@ -234,12 +234,15 @@ RILReceiver::DispatchRILEvent::RunTask(JSContext *aCx)
 {
   JSObject *obj = JS_GetGlobalObject(aCx);
 
-  JSObject *array = JS_NewUint8Array(aCx, mMessage->mSize);
+  LOGD("%s enter, size=%d", __func__, mMessage->mDataSize);
+  JSObject *array = JS_NewUint8Array(aCx, mMessage->mDataSize);
   if (!array) {
     return false;
   }
 
-  memcpy(JS_GetArrayBufferViewData(array, aCx), mMessage->mData, mMessage->mSize);
+  memcpy(JS_GetArrayBufferViewData(array, aCx),
+         mMessage->mData->mData,
+         mMessage->mDataSize);
   jsval argv[] = { OBJECT_TO_JSVAL(array) };
   return JS_CallFunctionName(aCx, obj, "onRILMessage", NS_ARRAY_LENGTH(argv),
                              argv, argv);

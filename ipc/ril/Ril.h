@@ -26,12 +26,13 @@ struct RilRawData
 {
     static const size_t MAX_DATA_SIZE = 1024;
     uint8_t mData[MAX_DATA_SIZE];
-
-    // Number of octets in mData.
-    size_t mSize;
 };
 
-class RilSubscriptionData
+/*
+ * RildData represents the data received from each rild, this class includes
+ * 'subId', 'dataSize' and 'RilRawData.'
+ */ 
+class RildData
 {
 public:
     int getSubId() {
@@ -55,6 +56,10 @@ public:
     nsAutoPtr<RilRawData> mData;
 };
 
+/*
+ * RilProxyData represents the data received from rilproxy, in multi rild
+ * scenario, RilProxyData could consist of several RildData from different rild.
+ */ 
 class RilProxyData
 {
 public:
@@ -62,35 +67,18 @@ public:
         : offset(0)
     { }
 
-    RilSubscriptionData* getNextRilSubscriptionData() {
-      if (offset < mSize) {
-          nsAutoPtr<RilSubscriptionData> subData(new RilSubscriptionData);
-          subData->mSubId = mData[offset + 0] << 24 |
-                            mData[offset + 1] << 16 |
-                            mData[offset + 2] << 8  |
-                            mData[offset + 3];
-          subData->mDataSize = mData[offset + 4] << 24 |
-                               mData[offset + 5] << 16 |
-                               mData[offset + 6] << 8  |
-                               mData[offset + 7];
-          subData->mData = new RilRawData();
-          memcpy(subData->mData->mData,
-                 &mData[offset + RilSubscriptionData::HEADER_SIZE],
-                 subData->mDataSize);
-          offset += RilSubscriptionData::HEADER_SIZE + subData->getDataSize();
-          return subData.forget();
-      } else {
-          return NULL;
-      }
-    }
+    RildData* GetNextRildData();
+
+    void appendRildData(RildData* data);
 
     //TODO * NUM_RILD
-    static const size_t MAX_DATA_SIZE = (RilRawData::MAX_DATA_SIZE +
-                                         RilSubscriptionData::HEADER_SIZE) * 2;
+//    static const size_t MAX_DATA_SIZE = (RilRawData::MAX_DATA_SIZE +
+//                                         RildData::HEADER_SIZE) * 2;
+    static const size_t MAX_DATA_SIZE = 1024;
+
     uint8_t mData[MAX_DATA_SIZE];
-    // Number of octets in mData.
-    size_t mSize;
-//private:
+    size_t mDataSize;
+private:
     size_t offset;
 };
 
@@ -104,7 +92,7 @@ public:
 
 bool StartRil(RilConsumer* aConsumer);
 
-bool SendRilRawData(RilRawData** aMessage);
+bool SendRilProxyData(RilProxyData** aMessage);
 
 void StopRil();
 
