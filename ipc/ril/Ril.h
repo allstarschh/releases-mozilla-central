@@ -50,6 +50,7 @@ public:
     static const size_t SUB_ID_SIZE = 4;
     static const size_t DATA_SIZE = 4;
     static const size_t HEADER_SIZE = SUB_ID_SIZE + DATA_SIZE;
+    static const size_t MAX_DATA_SIZE = RilRawData::MAX_DATA_SIZE + HEADER_SIZE;
 
     int mSubId;
     int mDataSize;
@@ -72,9 +73,8 @@ public:
     void appendRildData(RildData* data);
 
     //TODO * NUM_RILD
-//    static const size_t MAX_DATA_SIZE = (RilRawData::MAX_DATA_SIZE +
-//                                         RildData::HEADER_SIZE) * 2;
-    static const size_t MAX_DATA_SIZE = 1024;
+    static const size_t MAX_DATA_SIZE = RildData::MAX_DATA_SIZE * 2;
+//    static const size_t MAX_DATA_SIZE = 1024;
 
     uint8_t mData[MAX_DATA_SIZE];
     size_t mDataSize;

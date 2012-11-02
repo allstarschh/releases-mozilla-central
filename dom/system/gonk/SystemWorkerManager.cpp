@@ -153,7 +153,7 @@ PostToRIL(JSContext *cx, unsigned argc, jsval *vp)
   rildData->mData = raw;
 
   nsAutoPtr<RilProxyData> proxyData(new RilProxyData());
-  proxyData->mDataSize = rildData->mDataSize;
+  proxyData->mDataSize = rildData->mDataSize + RildData::HEADER_SIZE;
   proxyData->appendRildData(rildData.forget());
 
   RilProxyData *tosend = proxyData.forget();
@@ -213,11 +213,9 @@ RILReceiver::MessageReceived(RilProxyData *aMessage)
 {
   mMessage = aMessage;
   while (RildData *data = mMessage->GetNextRildData()) {
-    LOGD("XXX got RildData RilProxyData");
     unsigned int subId, dataSize;
     subId = data->getSubId();
     dataSize = data->getDataSize();
-    LOGD("XXX subId=%d, dataSize=%d", subId, dataSize);
     nsRefPtr<DispatchRILEvent> dre(new DispatchRILEvent(data));
     mDispatchers[subId]->PostTask(dre);
   }
@@ -234,7 +232,6 @@ RILReceiver::DispatchRILEvent::RunTask(JSContext *aCx)
 {
   JSObject *obj = JS_GetGlobalObject(aCx);
 
-  LOGD("%s enter, size=%d", __func__, mMessage->mDataSize);
   JSObject *array = JS_NewUint8Array(aCx, mMessage->mDataSize);
   if (!array) {
     return false;

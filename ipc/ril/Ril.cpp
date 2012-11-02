@@ -290,7 +290,6 @@ RilClient::OnFileCanReadWithoutBlocking(int fd)
 void
 RilClient::OnFileCanWriteWithoutBlocking(int fd)
 {
-    LOG("%s enter fd=%d", __func__, fd);
     // Try to write the bytes of mCurrentRilProxyData.  If all were written, continue.
     //
     // Otherwise, save the byte position of the next byte to write
@@ -316,19 +315,12 @@ RilClient::OnFileCanWriteWithoutBlocking(int fd)
         }
         const uint8_t *toWrite;
 
-        LOG("dataSize=%d", mCurrentRilProxyData->mDataSize);
         toWrite = mCurrentRilProxyData->mData;
-        LOG("%s enter 4 toWrite=%p", __func__, toWrite);
         while (mCurrentWriteOffset < mCurrentRilProxyData->mDataSize) {
-            LOG("current write offset = %d",mCurrentWriteOffset);
             ssize_t write_amount = mCurrentRilProxyData->mDataSize - mCurrentWriteOffset;
             ssize_t written;
-            for (int i = 0; i < write_amount; i++) {
-              LOG("i = %d toWrite = %d", i, toWrite[i]);
-            }
             written = write (fd, toWrite + mCurrentWriteOffset,
                              write_amount);
-            LOG("written = %d",written);
             if(written > 0) {
                 mCurrentWriteOffset += written;
             }
@@ -403,7 +395,6 @@ RilProxyData::appendRildData(RildData* aData)
     offset += RildData::HEADER_SIZE;
     memcpy(&mData[offset], data->mData->mData, dataSize);
     offset += dataSize;
-    LOG("%s exit", __func__);
 }
 //-----------------------------------------------------------------------------
 // This code runs on any thread.
@@ -433,13 +424,11 @@ StartRil(RilConsumer* aConsumer)
 bool
 SendRilProxyData(RilProxyData** aMessage)
 {
-    LOG("%s enter data=%p", __func__, *aMessage);
     if (!sClient) {
         return false;
     }
 
     RilProxyData *msg = *aMessage;
-    LOG("dataSize=%u",msg->mDataSize);
     *aMessage = nullptr;
 
     {
@@ -447,8 +436,6 @@ SendRilProxyData(RilProxyData** aMessage)
         sClient->mOutgoingQ.push(msg);
     }
     sClient->mIOLoop->PostTask(FROM_HERE, new RilWriteTask());
-
-    LOG("%s exit", __func__);
     return true;
 }
 
