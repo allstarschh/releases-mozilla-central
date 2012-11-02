@@ -31,7 +31,7 @@ struct RilRawData
     size_t mSize;
 };
 
-class RilSubscriptionData : RilRawData
+class RilSubscriptionData
 {
 public:
     int getSubId() {
@@ -43,48 +43,55 @@ public:
     }
 
     RilRawData* getRilRawData() {
-
+        return mData;
     }
 
     static const size_t SUB_ID_SIZE = 4;
     static const size_t DATA_SIZE = 4;
+    static const size_t HEADER_SIZE = SUB_ID_SIZE + DATA_SIZE;
 
-    uint8_t *mData;
-    int mDataSize;
     int mSubId;
+    int mDataSize;
+    nsAutoPtr<RilRawData> mData;
 };
 
 class RilProxyData
 {
 public:
     RilProxyData()
-        : index(0)
+        : offset(0)
     { }
 
     RilSubscriptionData* getNextRilSubscriptionData() {
-      if (index < mSize) {
-        nsAutoPtr<RilSubscriptionData> subData(new RilSubscriptionData);
-        subData->mSubId = mData[offset + 0] << 24 |
-                          mData[offset + 1] << 16 |
-                          mData[offset + 2] << 8  |
-                          mData[offset + 3];
-        subData->mDataSize = mData[offset + 4] << 24 |
-                             mData[offset + 5] << 16 |
-                             mData[offset + 6] << 8  |
-                             mData[offset + 7];
-        subData->mData = &mData[offset];
-        offset += subData::SUB_ID_SIZE + subData::DATA_SIZE + subData->getDataSize();
-        return subData.forget();
+      if (offset < mSize) {
+          nsAutoPtr<RilSubscriptionData> subData(new RilSubscriptionData);
+          subData->mSubId = mData[offset + 0] << 24 |
+                            mData[offset + 1] << 16 |
+                            mData[offset + 2] << 8  |
+                            mData[offset + 3];
+          subData->mDataSize = mData[offset + 4] << 24 |
+                               mData[offset + 5] << 16 |
+                               mData[offset + 6] << 8  |
+                               mData[offset + 7];
+          subData->mData = new RilRawData();
+          memcpy(subData->mData->mData,
+                 &mData[offset + RilSubscriptionData::HEADER_SIZE],
+                 subData->mDataSize);
+          offset += RilSubscriptionData::HEADER_SIZE + subData->getDataSize();
+          return subData.forget();
+      } else {
+          return NULL;
       }
     }
 
-    //TODO * NUM_RILD ?
-    static const size_t MAX_DATA_SIZE = 1032;
+    //TODO * NUM_RILD
+    static const size_t MAX_DATA_SIZE = (RilRawData::MAX_DATA_SIZE +
+                                         RilSubscriptionData::HEADER_SIZE) * 2;
     uint8_t mData[MAX_DATA_SIZE];
     // Number of octets in mData.
     size_t mSize;
-private:
-    int offset;
+//private:
+    size_t offset;
 };
 
 class RilConsumer : public RefCounted<RilConsumer>

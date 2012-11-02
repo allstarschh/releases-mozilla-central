@@ -66,7 +66,6 @@ struct RilClient : public RefCounted<RilClient>,
     ScopedClose mSocket;
     MessageLoopForIO::FileDescriptorWatcher mReadWatcher;
     MessageLoopForIO::FileDescriptorWatcher mWriteWatcher;
-//    nsAutoPtr<RilRawData> mIncoming;
     nsAutoPtr<RilProxyData> mIncoming;
     Mutex mMutex;
     RilRawDataQueue mOutgoingQ;
@@ -255,9 +254,7 @@ RilClient::OnFileCanReadWithoutBlocking(int fd)
     MOZ_ASSERT(fd == mSocket.get());
     while (true) {
         if (!mIncoming) {
-//            mIncoming = new RilRawData();
             mIncoming = new RilProxyData();
-//            ssize_t ret = read(fd, mIncoming->mData, RilRawData::MAX_DATA_SIZE);
             ssize_t ret = read(fd, mIncoming->mData, RilProxyData::MAX_DATA_SIZE);
             if (ret <= 0) {
                 if (ret == -1) {
@@ -286,9 +283,6 @@ RilClient::OnFileCanReadWithoutBlocking(int fd)
             if (ret < ssize_t(RilProxyData::MAX_DATA_SIZE)) {
                 return;
             }
-//            if (ret < ssize_t(RilRawData::MAX_DATA_SIZE)) {
-//                return;
-//            }
         }
     }
 }

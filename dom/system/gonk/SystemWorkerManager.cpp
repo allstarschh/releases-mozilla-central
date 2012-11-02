@@ -203,28 +203,20 @@ public:
 private:
   nsRefPtr<WorkerCrossThreadDispatcher> mDispatcher;
   nsRefPtr<WorkerCrossThreadDispatcher> mDispatchers[2];
+  nsAutoPtr<RilProxyData> mMessage;
 };
 
 void
 RILReceiver::MessageReceived(RilProxyData *aMessage)
 {
-  while (RilSubscriptionData *subData = aMessage->getNextRilSubscriptionData()) {
+  mMessage = aMessage;
+  LOGD("mMessage->mSize=%d",mMessage->mSize);
+  while (RilSubscriptionData *subData = mMessage->getNextRilSubscriptionData()) {
+    LOGD("XXX got RilSubsciptionData offset=%d",mMessage->offset);
     unsigned int subId, dataSize;
-    //TODO See Ril.h, use RilProxyData
-//    subId = aMessage->mData[offset + 0] << 24 |
-//            aMessage->mData[offset + 1] << 16 |
-//            aMessage->mData[offset + 2] << 8  |
-//            aMessage->mData[offset + 3];
-//    dataSize = aMessage->mData[offset + 4] << 24 |
-//               aMessage->mData[offset + 5] << 16 |
-//               aMessage->mData[offset + 6] << 8  |
-//               aMessage->mData[offset + 7];
     subId = subData->getSubId();
     dataSize = subData->getDataSize();
     LOGD("XXX subId=%d, dataSize=%d", subId, dataSize);
-//    nsAutoPtr<RilRawData> data(new RilRawData());
-//    data->mSize = dataSize;
-//    memcpy(data->mData, &aMessage->mData[offset + HEADER_SIZE], dataSize);
     RilRawData *raw = subData->getRilRawData();
     nsRefPtr<DispatchRILEvent> dre(new DispatchRILEvent(raw));
     mDispatchers[subId]->PostTask(dre);
