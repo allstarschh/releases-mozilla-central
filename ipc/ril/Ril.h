@@ -43,6 +43,7 @@ public:
         return mDataSize;
     }
 
+    //TODO need this?
     RilRawData* getRilRawData() {
         return mData;
     }
@@ -72,9 +73,7 @@ public:
 
     void appendRildData(RildData* data);
 
-    //TODO * NUM_RILD
-    static const size_t MAX_DATA_SIZE = RildData::MAX_DATA_SIZE * 2;
-//    static const size_t MAX_DATA_SIZE = 1024;
+    static const size_t MAX_DATA_SIZE = RildData::MAX_DATA_SIZE;
 
     uint8_t mData[MAX_DATA_SIZE];
     size_t mDataSize;

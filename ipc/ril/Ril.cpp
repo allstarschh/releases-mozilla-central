@@ -340,7 +340,6 @@ RilClient::OnFileCanWriteWithoutBlocking(int fd)
         }
         mCurrentRilProxyData = NULL;
     }
-    LOG("%s exit", __func__);
 }
 
 static void
@@ -380,6 +379,7 @@ void
 RilProxyData::appendRildData(RildData* aData)
 {
     nsAutoPtr<RildData> data(aData);
+    // TODO this line will get compile error
 //    nsAutoPtr<RildData> data = aData;
     LOG("%s offset=%d subId=%d dataSize=%d", __func__, offset, data->mSubId, data->mDataSize);
     uint8_t *ptr = &mData[offset];
