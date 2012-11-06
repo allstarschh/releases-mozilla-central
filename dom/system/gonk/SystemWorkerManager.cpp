@@ -145,7 +145,7 @@ PostToRIL(JSContext *cx, unsigned argc, jsval *vp)
   };
   int subId = subVal.toInt32();
 
-  LOGD("XXX  subId=%d", subId);
+  LOGD("PostToRIL  subId=%d", subId);
   //TODO See Ril.h, use RilProxyData
   rm->mSize = size + SUB_ID_SIZE;
   rm->mData[0] = (subId >> 24) & 0xff;
@@ -220,7 +220,7 @@ RILReceiver::MessageReceived(RilRawData *aMessage)
                aMessage->mData[offset + 5] << 16 |
                aMessage->mData[offset + 6] << 8  |
                aMessage->mData[offset + 7];
-    LOGD("XXX subId=%d, dataSize=%d", subId, dataSize);
+    LOGD("MessageReceived subId=%d, dataSize=%d", subId, dataSize);
 
     nsAutoPtr<RilRawData> data(new RilRawData());
     data->mSize = dataSize;
